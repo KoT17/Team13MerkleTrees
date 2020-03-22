@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <sstream>
 
 using namespace std;
 
@@ -9,28 +10,28 @@ template <typename T>
 class LeafNode {
 public:
   T val;
-  size_t hash;
+  string hash;
 
-  LeafNode(T _val, size_t _hash);
+  LeafNode(T _val, string _hash);
 };
 
 template <typename T>
-LeafNode<T>::LeafNode(T _val, size_t _hash) {
+LeafNode<T>::LeafNode(T _val, string _hash) {
   val = _val;
   hash = _hash;
 }
 
 class MerkleNode {
 public:
-  size_t hash;
+  string hash;
   MerkleNode* left;
   MerkleNode* right;
 
-  MerkleNode(size_t hash);
+  MerkleNode(string hash);
   MerkleNode();
 };
 
-MerkleNode::MerkleNode(size_t _hash) {
+MerkleNode::MerkleNode(string _hash) {
   hash = _hash;
   left = NULL;
   right = NULL;
@@ -53,7 +54,7 @@ MerkleTree::MerkleTree(MerkleNode _root) {
   root = _root;
 }
 
-MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<size_t> hash) {
+MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<string> hash) {
   vector<MerkleNode*> upperLevel;
   cout << "D: Recursing through hashedNodes with size (" << hashedNodes.size() << ")" << endl;
   if(hashedNodes.size() == 1){
@@ -62,7 +63,17 @@ MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<size_t> hash
   }
 
   for (int i = 0; i < hashedNodes.size() - 1; i = i + 2) {
-    MerkleNode* node = new MerkleNode(hash((hashedNodes.at(i))->hash + (hashedNodes.at(i+1))->hash));
+
+    stringstream ss;
+    cout << "Hash 1: " << (hashedNodes.at(i))->hash << endl;
+    cout << "Hash 2: " << (hashedNodes.at(i+1))->hash << endl;
+    ss << (hashedNodes.at(i))->hash << (hashedNodes.at(i+1))->hash;
+    stringstream output(ss.str());
+
+    size_t temp = hash(ss.str());
+    ss.str("");
+    ss << temp;
+    MerkleNode* node = new MerkleNode(ss.str());
 
     node->left = hashedNodes.at(i);
     node->right = hashedNodes.at(i+1);
@@ -71,7 +82,10 @@ MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<size_t> hash
   }
 
   if(hashedNodes.size() % 2 == 1) {
-    MerkleNode* node = new MerkleNode(hash(hashedNodes.at(hashedNodes.size()-1)->hash));
+    stringstream ss;
+    size_t temp = hash(hashedNodes.at(hashedNodes.size()-1)->hash);
+    ss << temp;
+    MerkleNode* node = new MerkleNode(ss.str());
 
     node->left = hashedNodes.at(hashedNodes.size()-1);
     upperLevel.push_back(node);
@@ -85,7 +99,8 @@ template <typename T>
 MerkleNode* populate(vector<LeafNode<T> > leaves) {
   cout << "D: Entering Populate Function" << endl;
   vector<MerkleNode*> base;
-  hash<size_t> hash;
+  hash<string> hash;
+
 
   for (int i = 0; i < leaves.size(); i++) {
     MerkleNode* node = new MerkleNode(leaves.at(i).hash);
@@ -95,6 +110,16 @@ MerkleNode* populate(vector<LeafNode<T> > leaves) {
 
   cout << "D: Entering Recursive Function" << endl;
   return recursivePopulate(base, hash);
+}
+
+template <typename T>
+bool validate(vector<LeafNode<T> > a1, vector<LeafNode<T> > a2) {
+  MerkleNode* firstRoot = populate(a1);
+  MerkleNode* secondRoot = populate(a2);
+
+  cout << "Hash 1: " << firstRoot->hash << endl;
+  cout << "Hash 2: " << secondRoot->hash << endl;
+  return (firstRoot->hash.compare(secondRoot->hash) == 0);
 }
 
 int main() {
@@ -108,10 +133,23 @@ int main() {
   string B = "B";
   string C = "C";
   string D = "D";
-  size_t hashA = test(A);
-  size_t hashB = test(B);
-  size_t hashC = test(C);
-  size_t hashD = test(D);
+
+  stringstream convert;
+  convert << test(A);
+  cout << convert.str() << endl;
+  string hashA = convert.str();
+
+  convert.str("");
+  convert << test(B);
+  string hashB = convert.str();
+
+  convert.str("");
+  convert << test(C);
+  string hashC = convert.str();
+
+  convert.str("");
+  convert << test(D);
+  string hashD = convert.str();
 
   LeafNode<int> tempA(1, hashA);
   LeafNode<int> tempB(2, hashB);
@@ -122,10 +160,17 @@ int main() {
   result.push_back(tempA);
   result.push_back(tempB);
   result.push_back(tempC);
-  result.push_back(tempD);
+  //result.push_back(tempD);
+
+  vector<LeafNode<int> > tester;
+  tester.push_back(tempA);
+  tester.push_back(tempB);
+  tester.push_back(tempC);
+  //tester.push_back(tempC);
 
   MerkleNode* root = populate(result);
 
+  cout << validate(result, tester) << endl;
   cout << "Root hash: " << root->hash << " Left Hash: " << root->left->hash << " Right Hash: " << root->right->hash << endl;
 
 }
