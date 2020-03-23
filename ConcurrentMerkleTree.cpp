@@ -7,6 +7,8 @@
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <queue>
+#include <atomic>
 
 #include "mrlock.h"
 #include "mrlockable.h"
@@ -50,30 +52,16 @@ MerkleNode::MerkleNode() {
   right = NULL;
 }
 
-class MerkleTree {
-public:
-  MerkleNode root;
-
-  MerkleTree(MerkleNode _root);
-};
-
-MerkleTree::MerkleTree(MerkleNode _root) {
-  root = _root;
-}
-
+// Helper function for populate()
 MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<string> hash) {
   vector<MerkleNode*> upperLevel;
-  cout << "D: Recursing through hashedNodes with size (" << hashedNodes.size() << ")" << endl;
-  if(hashedNodes.size() == 1){
-    cout << "D: Root Node has been reached at address (" << hashedNodes.at(0) << ") and hash (" << hashedNodes.at(0)->hash << ")" << endl;
+
+  if(hashedNodes.size() == 1)
     return hashedNodes.at(0);
-  }
 
   for (int i = 0; i < hashedNodes.size() - 1; i = i + 2) {
 
     stringstream ss;
-    cout << "Hash 1: " << (hashedNodes.at(i))->hash << endl;
-    cout << "Hash 2: " << (hashedNodes.at(i+1))->hash << endl;
     ss << (hashedNodes.at(i))->hash << (hashedNodes.at(i+1))->hash;
     stringstream output(ss.str());
 
@@ -104,61 +92,80 @@ MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<string> hash
 // Returns root of merkle tree
 template <typename T>
 MerkleNode* populate(vector<LeafNode<T> > leaves) {
-  cout << "D: Entering Populate Function" << endl;
   vector<MerkleNode*> base;
   hash<string> hash;
-
 
   for (int i = 0; i < leaves.size(); i++) {
     MerkleNode* node = new MerkleNode(leaves.at(i).hash);
 
     base.push_back(node);
   }
-
-  cout << "D: Entering Recursive Function" << endl;
   return recursivePopulate(base, hash);
 }
 
+// Compares two vectors of leaf values
 template <typename T>
 bool validate(vector<LeafNode<T> > a1, vector<LeafNode<T> > a2) {
   MerkleNode* firstRoot = populate(a1);
   MerkleNode* secondRoot = populate(a2);
 
-  cout << "Hash 1: " << firstRoot->hash << endl;
-  cout << "Hash 2: " << secondRoot->hash << endl;
   return (firstRoot->hash.compare(secondRoot->hash) == 0);
 }
 
-void run(vector<LeafNode<int>> result, vector<LeafNode<int>> tester, vector<int> random, ResourceAllocatorBase* allocator) {
-  MerkleNode* root;
-  vector<ResourceAllocatorBase::ResourceIdVec> resourceIdVec;
-  vector<int> temp(10);
-  
-  for(int i = 0; i < resourceIdVec.size(); i++) {
-    temp.clear();
+// Inserted a new Merkle Node into the right most of the root
+MerkleNode* insertLeaf(MerkleNode* root, string passedHash) {
+  MerkleNode* temp = root;
+  MerkleNode* insertedNode = new MerkleNode(passedHash);
 
-    for(int i = 0; i < 9; i++) {
-      temp.push_back(rand()%100);
+  hash<string> h;
+  vector<MerkleNode*> leafMerkles;
+  queue<MerkleNode*> q;
+
+  q.push(root);
+  while (!q.empty()) {
+    MerkleNode* temp = q.front();
+    if (temp->left == NULL && temp->right == NULL) {
+      leafMerkles.push_back(temp);
+    } else if (temp->right == NULL) {
+      leafMerkles.push_back(temp->left);
+    } else {
+      q.push(temp->left);
+      q.push(temp->right);
     }
-
-    resourceIdVec[i].assign(temp.begin(), temp.end());
+    q.pop();
   }
 
-  for(unsigned i = 0; i < 2; i++) {
-    LockableBase* resourceLock = allocator->CreateLockable(resourceIdVec[i]);
-    resourceLock->lock();
-  }
+  leafMerkles.push_back(insertedNode);
+  return recursivePopulate(leafMerkles, h);
+}
 
+// Thread function for running random commands on the root
+void run(atomic<MerkleNode*> *atomicRoot, vector<LeafNode<int>> result, vector<LeafNode<int>> tester, vector<int> random, ResourceAllocatorBase* allocator) {
+  hash<string> hash;
+
+  vector<int> resources = {2, 7, 8, 3};
+  unsigned numOfRes = 4;
+  MRLock<Bitset> mrlock(resources.size());
+  MRResourceAllocator res(numOfRes);
+  LockableBase* resourceLock = res.CreateLockable(resources);
+
+  resourceLock->Lock();
+  MerkleNode* root = atomicRoot->load();
   for(int i = 0; i < 4; i++) {
-    cout << "random: " << random[i] << endl;
-
     if(random[i] == 2)
-        root = populate(result);
+      root = populate(result);
     else if(random[i] == 1)
-        root = populate(tester);
-    else
-        validate(tester, result);
+      root = populate(tester);
+    else if(random[i] == 0)
+      cout << "Are the trees the same: " << validate(tester, result) << endl;
+    else {
+      root = insertLeaf(root, "123456789");
+    }
   }
+  atomicRoot->store(root);
+  resourceLock->Unlock();
+
+
 }
 
 int main() {
@@ -175,7 +182,6 @@ int main() {
 
   stringstream convert;
   convert << test(A);
-  cout << convert.str() << endl;
   string hashA = convert.str();
 
   convert.str("");
@@ -199,33 +205,28 @@ int main() {
   result.push_back(tempA);
   result.push_back(tempB);
   result.push_back(tempC);
-  //result.push_back(tempD);
+  result.push_back(tempD);
 
   vector<LeafNode<int> > tester;
   tester.push_back(tempA);
   tester.push_back(tempB);
   tester.push_back(tempC);
-  //tester.push_back(tempC);
 
-  MerkleNode* root = populate(result);
+  atomic<MerkleNode*> atom;
+  atom.store(populate(result));
 
   vector<thread> threads(4);
   vector<int> random(4);
   ResourceAllocatorBase* resourceAlloc = new MRResourceAllocator(2);
- 
-  for(int i = 0; i < 4; i++)
-    random[i] = rand()%3;
+
+  for(int i = 0; i < 4; i++){
+    random[i] = rand()%4;
+  }
 
   for(int i = 0; i < 4; i++)
-    threads[i] = thread(run, result, tester, random, resourceAlloc);
-
-  // MRLock<Bitset> lock = new MRLock<Bitset>((uint32_t) threads.at(0));
-
+    threads[i] = thread(run, &atom, result, tester, random, resourceAlloc);
 
   for(int i = 0; i < 4; i++)
     threads[i].join();
-
-  cout << validate(result, tester) << endl;
-  cout << "Root hash: " << root->hash << " Left Hash: " << root->left->hash << " Right Hash: " << root->right->hash << endl;
 
 }

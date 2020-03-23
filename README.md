@@ -30,3 +30,12 @@ paper, and other relevant approaches.
 #### What we read on: 
 * https://www.geeksforgeeks.org/introduction-to-merkle-tree/
 * https://hackernoon.com/merkle-trees-181cb4bc30b4
+
+#### How to compile: 
+##### SequentialMerkleTree.cpp
+* g++ SequentialMerkleTree.cpp 
+* ./a.out 
+
+##### ConcurrentMerkleTree.cpp
+* g++ ConcurrentMerkleTree.cpp mrlockable.cc lockablebase.cc -pthread
+* ./a.out 
