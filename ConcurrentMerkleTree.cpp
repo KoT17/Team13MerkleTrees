@@ -7,6 +7,7 @@
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <queue>
 
 #include "mrlock.h"
 #include "mrlockable.h"
@@ -48,17 +49,6 @@ MerkleNode::MerkleNode() {
   hash = -1;
   left = NULL;
   right = NULL;
-}
-
-class MerkleTree {
-public:
-  MerkleNode root;
-
-  MerkleTree(MerkleNode _root);
-};
-
-MerkleTree::MerkleTree(MerkleNode _root) {
-  root = _root;
 }
 
 MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<string> hash) {
@@ -129,36 +119,58 @@ bool validate(vector<LeafNode<T> > a1, vector<LeafNode<T> > a2) {
   return (firstRoot->hash.compare(secondRoot->hash) == 0);
 }
 
+MerkleNode* insertLeaf(MerkleNode* root, string passedHash) {
+  MerkleNode* temp = root;
+  MerkleNode* insertedNode = new MerkleNode(passedHash);
+
+  hash<string> h;
+  vector<MerkleNode*> leafMerkles;
+  queue<MerkleNode*> q;
+  q.push(root);
+  while (!q.empty()) {
+    MerkleNode* temp = q.front();
+    if (temp->left == NULL && temp->right == NULL) {
+      leafMerkles.push_back(temp);
+    } else if (temp->right == NULL) {
+      cout << "Hit?" << endl;
+      leafMerkles.push_back(temp->left);
+    } else {
+      q.push(temp->left);
+      q.push(temp->right);
+    }
+    q.pop();
+  }
+
+  leafMerkles.push_back(insertedNode);
+  return recursivePopulate(leafMerkles, h);
+}
+
 void run(vector<LeafNode<int>> result, vector<LeafNode<int>> tester, vector<int> random, ResourceAllocatorBase* allocator) {
   MerkleNode* root;
-  vector<ResourceAllocatorBase::ResourceIdVec> resourceIdVec;
-  vector<int> temp(10);
-  
-  for(int i = 0; i < resourceIdVec.size(); i++) {
-    temp.clear();
+  hash<string> hash;
 
-    for(int i = 0; i < 9; i++) {
-      temp.push_back(rand()%100);
-    }
+  vector<int> resources = {2, 7, 8, 3};
+  unsigned numOfRes = 4;
+  MRLock<Bitset> mrlock(resources.size());
+  MRResourceAllocator res(numOfRes);
+  LockableBase* resourceLock = res.CreateLockable(resources);
 
-    resourceIdVec[i].assign(temp.begin(), temp.end());
-  }
-
-  for(unsigned i = 0; i < 2; i++) {
-    LockableBase* resourceLock = allocator->CreateLockable(resourceIdVec[i]);
-    resourceLock->lock();
-  }
-
+  resourceLock->Lock();
   for(int i = 0; i < 4; i++) {
     cout << "random: " << random[i] << endl;
 
     if(random[i] == 2)
-        root = populate(result);
+      root = populate(result);
     else if(random[i] == 1)
-        root = populate(tester);
-    else
-        validate(tester, result);
+      root = populate(tester);
+    else if(random[i] == 0)
+      validate(tester, result);
+    else {
+      root = populate(result);
+      root = insertLeaf(root, "0987654332");
+    }
   }
+  resourceLock->Unlock();
 }
 
 int main() {
@@ -207,20 +219,20 @@ int main() {
   tester.push_back(tempC);
   //tester.push_back(tempC);
 
+  cout << "D: Before test root" << endl;
   MerkleNode* root = populate(result);
 
   vector<thread> threads(4);
   vector<int> random(4);
   ResourceAllocatorBase* resourceAlloc = new MRResourceAllocator(2);
- 
-  for(int i = 0; i < 4; i++)
-    random[i] = rand()%3;
+  cout << "D: Passed RAB" << endl;
+
+  for(int i = 0; i < 4; i++){
+    random[i] = rand()%4;
+  }
 
   for(int i = 0; i < 4; i++)
     threads[i] = thread(run, result, tester, random, resourceAlloc);
-
-  // MRLock<Bitset> lock = new MRLock<Bitset>((uint32_t) threads.at(0));
-
 
   for(int i = 0; i < 4; i++)
     threads[i].join();

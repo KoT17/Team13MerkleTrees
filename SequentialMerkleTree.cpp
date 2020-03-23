@@ -3,6 +3,7 @@
 #include <vector>
 #include <functional>
 #include <sstream>
+#include <queue>
 
 using namespace std;
 
@@ -41,17 +42,6 @@ MerkleNode::MerkleNode() {
   hash = -1;
   left = NULL;
   right = NULL;
-}
-
-class MerkleTree {
-public:
-  MerkleNode root;
-
-  MerkleTree(MerkleNode _root);
-};
-
-MerkleTree::MerkleTree(MerkleNode _root) {
-  root = _root;
 }
 
 MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<string> hash) {
@@ -122,6 +112,32 @@ bool validate(vector<LeafNode<T> > a1, vector<LeafNode<T> > a2) {
   return (firstRoot->hash.compare(secondRoot->hash) == 0);
 }
 
+MerkleNode* insertLeaf(MerkleNode* root, string passedHash) {
+  MerkleNode* temp = root;
+  MerkleNode* insertedNode = new MerkleNode(passedHash);
+
+  hash<string> h;
+  vector<MerkleNode*> leafMerkles;
+  queue<MerkleNode*> q;
+  q.push(root);
+  while (!q.empty()) {
+    MerkleNode* temp = q.front();
+    if (temp->left == NULL && temp->right == NULL) {
+      leafMerkles.push_back(temp);
+    } else if (temp->right == NULL) {
+      cout << "Hit?" << endl;
+      leafMerkles.push_back(temp->left);
+    } else {
+      q.push(temp->left);
+      q.push(temp->right);
+    }
+    q.pop();
+  }
+
+  leafMerkles.push_back(insertedNode);
+  return recursivePopulate(leafMerkles, h);
+}
+
 int main() {
 
   // Create list of nodes with precreated hashes through hash<T>
@@ -159,7 +175,7 @@ int main() {
   vector<LeafNode<int> > result;
   result.push_back(tempA);
   result.push_back(tempB);
-  result.push_back(tempC);
+  //result.push_back(tempC);
   //result.push_back(tempD);
 
   vector<LeafNode<int> > tester;
@@ -169,8 +185,10 @@ int main() {
   //tester.push_back(tempC);
 
   MerkleNode* root = populate(result);
+  MerkleNode* newRoot = insertLeaf(root, "123");
 
   cout << validate(result, tester) << endl;
   cout << "Root hash: " << root->hash << " Left Hash: " << root->left->hash << " Right Hash: " << root->right->hash << endl;
+  cout << "NR hash: " << newRoot->hash << " NR Left Hash: " << newRoot->left->left->hash << " NR Right Hash: " << newRoot->right->left->hash << endl;
 
 }
