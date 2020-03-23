@@ -39,3 +39,6 @@ paper, and other relevant approaches.
 ##### ConcurrentMerkleTree.cpp
 * g++ ConcurrentMerkleTree.cpp mrlockable.cc lockablebase.cc -pthread
 * ./a.out 
+
+#### Our Published paper on Research Gate 
+https://www.researchgate.net/publication/340106020_Exploration_of_Concurrent_Merkle_Trees_using_MRLock
