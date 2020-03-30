@@ -28,13 +28,15 @@ class Proof {
 public:
   string val;
   string hash;
+  vector<MerkleNode*> siblingHashes;
 
   Proof(string _val, string _hash);
 };
 
-Proof::Proof(string _val, string _hash) {
+Proof::Proof(string _val, string _hash, vector<MerkleNode*> _siblingHashes) {
   val = _val;
   hash = _hash;
+  siblingHashes = _siblingHashes;
 }
 
 class MerkleNode {
@@ -271,25 +273,39 @@ Proof* MerkleTree::generate_proof(int index) {
 
   MerkleNode* temp = root.load();
   hash<string> hash;
+  stack<MerkleNode*> siblings;
 
   while (first <= last) {
     middle = (first + last) / 2;
     if (middle < index) {
       first = middle + 1;
+      siblings.push(temp->left);
       temp = temp->right;
       depth++;
     } else if (middle > index) {
       last = middle - 1;
+      siblings.push(temp->right);
       temp = temp->left;
       depth++;
     } else {
       if(depth != 2) { // NEED to change when scaling up
-
+        siblings.push(temp->right);
         temp = temp->left;
-        while (temp->right)
+
+        while (temp->right) {
+          siblings.push(temp->left);
           temp = temp->right;
+        }
       }
-      Proof* result = new Proof(temp->leaf->val, temp->hash);
+
+      vector<MerkleNode*> proofHashes;
+      while (!siblings.empty()) {
+        MerkleNode* temp = siblings.front();
+        proofHashes.push_back(temp);
+        siblings.pop();
+      }
+
+      Proof* result = new Proof(temp->leaf->val, temp->hash, proofHashes);
       return result;
     }
   }
