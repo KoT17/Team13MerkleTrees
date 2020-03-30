@@ -24,21 +24,6 @@ LeafNode::LeafNode(string _val, string _hash) {
   hash = _hash;
 }
 
-class Proof {
-public:
-  string val;
-  string hash;
-  vector<MerkleNode*> siblingHashes;
-
-  Proof(string _val, string _hash);
-};
-
-Proof::Proof(string _val, string _hash, vector<MerkleNode*> _siblingHashes) {
-  val = _val;
-  hash = _hash;
-  siblingHashes = _siblingHashes;
-}
-
 class MerkleNode {
 public:
   string hash;
@@ -70,6 +55,21 @@ MerkleNode::MerkleNode() {
   leaf = NULL;
   left = NULL;
   right = NULL;
+}
+
+class Proof {
+public:
+  string val;
+  string hash;
+  vector<MerkleNode*> siblingHashes;
+
+  Proof(string _val, string _hash, vector<MerkleNode*> _siblingHashes);
+};
+
+Proof::Proof(string _val, string _hash, vector<MerkleNode*> _siblingHashes) {
+  val = _val;
+  hash = _hash;
+  siblingHashes = _siblingHashes;
 }
 
 // Helper function for populate()
@@ -300,7 +300,7 @@ Proof* MerkleTree::generate_proof(int index) {
 
       vector<MerkleNode*> proofHashes;
       while (!siblings.empty()) {
-        MerkleNode* temp = siblings.front();
+        MerkleNode* temp = siblings.top();
         proofHashes.push_back(temp);
         siblings.pop();
       }
@@ -313,7 +313,25 @@ Proof* MerkleTree::generate_proof(int index) {
 }
 
 bool MerkleTree::verify_proof(Proof* proof, string data, MerkleNode* root) {
-  return (data.compare(proof->val) == 0);
+  hash<string> hash;
+  size_t hashedData = hash(data);
+  int size = proof->siblingHashes.size();
+  size_t newHash; 
+  stringstream ss;
+
+  ss << hashedData << proof->siblingHashes.at(0)->hash; 
+  newHash = hash(ss.str()); 
+  ss.str(""); 
+
+  for (int i = 1; i < size; i++) {
+    ss << newHash << proof->siblingHashes.at(i)->hash;
+    newHash = hash(ss.str()); 
+    ss.str(""); 
+  }
+
+  ss << newHash; 
+
+  return (ss.str().compare(root->hash) == 0);
 }
 
 int main() {
