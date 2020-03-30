@@ -10,17 +10,29 @@
 
 using namespace std;
 
-template <typename T>
 class LeafNode {
 public:
-  T val;
+  string val;
   string hash;
 
-  LeafNode(T _val, string _hash);
+  LeafNode(string _val, string _hash);
 };
 
-template <typename T>
-LeafNode<T>::LeafNode(T _val, string _hash) {
+
+LeafNode::LeafNode(string _val, string _hash) {
+  val = _val;
+  hash = _hash;
+}
+
+class Proof {
+public:
+  string val;
+  string hash;
+
+  Proof(string _val, string _hash);
+};
+
+Proof::Proof(string _val, string _hash) {
   val = _val;
   hash = _hash;
 }
@@ -28,21 +40,32 @@ LeafNode<T>::LeafNode(T _val, string _hash) {
 class MerkleNode {
 public:
   string hash;
+  LeafNode* leaf;
   MerkleNode* left;
   MerkleNode* right;
 
+  MerkleNode(string _hash, LeafNode* _leaf);
   MerkleNode(string hash);
   MerkleNode();
 };
 
+MerkleNode::MerkleNode(string _hash, LeafNode* _leaf) {
+  hash = _hash;
+  leaf = _leaf;
+  left = NULL;
+  right = NULL;
+}
+
 MerkleNode::MerkleNode(string _hash) {
   hash = _hash;
+  leaf = NULL;
   left = NULL;
   right = NULL;
 }
 
 MerkleNode::MerkleNode() {
   hash = -1;
+  leaf = NULL;
   left = NULL;
   right = NULL;
 }
@@ -85,13 +108,12 @@ MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<string> hash
 }
 
 // Returns root of merkle tree
-template <typename T>
-MerkleNode* populate(vector<LeafNode<T> > leaves) {
+MerkleNode* populate(vector<LeafNode> leaves) {
   vector<MerkleNode*> base;
   hash<string> hash;
 
   for (int i = 0; i < leaves.size(); i++) {
-    MerkleNode* node = new MerkleNode(leaves.at(i).hash);
+    MerkleNode* node = new MerkleNode(leaves.at(i).hash, &leaves.at(i));
 
     base.push_back(node);
   }
@@ -100,8 +122,7 @@ MerkleNode* populate(vector<LeafNode<T> > leaves) {
 }
 
 // Compares two vectors of leaf values
-template <typename T>
-bool validate(vector<LeafNode<T> > a1, vector<LeafNode<T> > a2) {
+bool validate(vector<LeafNode> a1, vector<LeafNode> a2) {
   MerkleNode* firstRoot = populate(a1);
   MerkleNode* secondRoot = populate(a2);
 
@@ -134,7 +155,6 @@ MerkleNode* insertLeaf(MerkleNode* root, string passedHash) {
   return recursivePopulate(leafMerkles, h);
 }
 
-template <typename T>
 class MerkleTree {
 public:
   atomic<MerkleNode*> root;
@@ -142,13 +162,12 @@ public:
   MerkleTree();
   bool insert_leaf(int index, string data);
   MerkleNode* get_signed_root();
-  vector<LeafNode<T>> generate_proof(int index);
-  bool verify_proof(vector<LeafNode<T>> proof, T data, MerkleNode* root);
+  Proof* generate_proof(int index);
+  bool verify_proof(Proof* proof, string data, MerkleNode* root);
 };
 
-template <typename T>
-MerkleTree<T>::MerkleTree() {
-  vector<LeafNode<string> > init;
+MerkleTree::MerkleTree() {
+  vector<LeafNode> init;
 
   hash<string> hash;
   stringstream convert;
@@ -156,15 +175,14 @@ MerkleTree<T>::MerkleTree() {
   string hashedValue = convert.str();
 
   for (int i = 0; i < pow(2, 2); i++) {
-    LeafNode<string> temp("", hashedValue); // Whatever # of nodes here
+    LeafNode temp("", hashedValue); // Whatever # of nodes here
     init.push_back(temp);
   }
 
   root.store(populate(init));
 }
 
-template <typename T>
-bool MerkleTree<T>::insert_leaf(int index, string data) {
+bool MerkleTree::insert_leaf(int index, string data) {
   int last = pow(2, 2) - 1;
   int first = 0;
   int middle = 0;
@@ -194,7 +212,7 @@ bool MerkleTree<T>::insert_leaf(int index, string data) {
 
       depth++;
     } else {
-      if(depth != 2) {
+      if(depth != 2) { // NEED to change when scaling up
         parents.push(temp);
         siblings.push(temp->right);
         temp = temp->left;
@@ -206,7 +224,14 @@ bool MerkleTree<T>::insert_leaf(int index, string data) {
         }
       }
       cout << parents.size() << endl;
-      temp->hash = data;
+
+      size_t hashed = hash(data);
+      stringstream ss;
+      ss << hashed;
+      LeafNode* leaf = new LeafNode(data, ss.str());
+
+      temp->hash = ss.str();
+      temp->leaf = leaf;
 
       // Traverse back up
       while (!parents.empty()) {
@@ -234,19 +259,45 @@ bool MerkleTree<T>::insert_leaf(int index, string data) {
   return 0;
 }
 
-template <typename T>
-MerkleNode* MerkleTree<T>::get_signed_root() {
+MerkleNode* MerkleTree::get_signed_root() {
   return root.load();
 }
 
-template <typename T>
-vector<LeafNode<T>> MerkleTree<T>::generate_proof(int index) {
+Proof* MerkleTree::generate_proof(int index) {
+  int last = pow(2, 2) - 1;
+  int first = 0;
+  int middle = 0;
+  int depth = 0; // Depth needs to be check to make sure it's right level
 
+  MerkleNode* temp = root.load();
+  hash<string> hash;
+
+  while (first <= last) {
+    middle = (first + last) / 2;
+    if (middle < index) {
+      first = middle + 1;
+      temp = temp->right;
+      depth++;
+    } else if (middle > index) {
+      last = middle - 1;
+      temp = temp->left;
+      depth++;
+    } else {
+      if(depth != 2) { // NEED to change when scaling up
+
+        temp = temp->left;
+        while (temp->right)
+          temp = temp->right;
+      }
+      Proof* result = new Proof(temp->leaf->val, temp->hash);
+      return result;
+    }
+  }
+  return NULL;
 }
 
-template <typename T>
-bool MerkleTree<T>::verify_proof(vector<LeafNode<T>> proof, T data, MerkleNode* root) {
-
+bool MerkleTree::verify_proof(Proof* proof, string data, MerkleNode* root) {
+  return (data.compare(proof->val) == 0);
 }
 
 int main() {
@@ -271,15 +322,15 @@ int main() {
   convert << test(C);
   string hashC = convert.str();
 
-  LeafNode<int> tempA(1, hashA);
-  LeafNode<int> tempB(2, hashB);
-  LeafNode<int> tempC(3, hashC);
+  LeafNode tempA("1", hashA);
+  LeafNode tempB("2", hashB);
+  LeafNode tempC("3", hashC);
 
-  vector<LeafNode<int> > result;
+  vector<LeafNode> result;
   result.push_back(tempA);
   result.push_back(tempB);
 
-  vector<LeafNode<int> > tester;
+  vector<LeafNode> tester;
   tester.push_back(tempA);
   tester.push_back(tempB);
   tester.push_back(tempC);
@@ -288,7 +339,7 @@ int main() {
   MerkleNode* newRoot = insertLeaf(root, "D");
 
   cout << "D: Before MerkleTree" << endl;
-  MerkleTree<int> tree;
+  MerkleTree tree;
   tree.insert_leaf(0, "123");
 
   MerkleNode* treeNode = tree.get_signed_root();
@@ -304,6 +355,8 @@ int main() {
   cout << "Head hash: " << treeNode->hash << endl;
   cout << "MerkleRoot: " << tree.get_signed_root()->hash << endl;
 
-
+  Proof* pro = tree.generate_proof(1);
+  cout << "Proof values, val: " << pro->val << " Hash: " << pro->hash << endl;
+  cout << "Proof Compare: " << tree.verify_proof(pro, "777", tree.get_signed_root()) << endl;
   cout << "Are the trees the same: " << validate(result, tester) << endl;
 }
