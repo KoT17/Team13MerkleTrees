@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cmath>
 #include <stack>
+#include <algorithm>
 
 using namespace std;
 
@@ -22,6 +23,20 @@ public:
 LeafNode::LeafNode(string _val, string _hash) {
   val = _val;
   hash = _hash;
+}
+
+class Transaction {
+public:
+  string val;
+  int index;
+
+  Transaction(string _val, int _index);
+};
+
+
+Transaction::Transaction(string _val, int _index) {
+  val = _val;
+  index = _index;
 }
 
 class MerkleNode {
@@ -147,7 +162,7 @@ MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<string> hash
 MerkleNode* populate(vector<LeafNode> leaves) {
   vector<MerkleNode*> base;
   hash<string> hash;
-  int depth = log(pow(2,3))/log(2); // Change for testing/scaling
+  int depth = 3; // Change for testing/scaling
 
   for (int i = 0; i < leaves.size(); i++) {
     MerkleNode* node = new MerkleNode(leaves.at(i).hash, findEncoding(i, depth), &leaves.at(i));
@@ -158,16 +173,20 @@ MerkleNode* populate(vector<LeafNode> leaves) {
   return recursivePopulate(base, hash, depth - 1); // Depth of tree
 }
 
+
 class MerkleTree {
 public:
   atomic<MerkleNode*> root;
-  vector<string> encodings;
+  vector<string> conflicts;
 
   MerkleTree();
   bool insert_leaf(int index, string data);
   MerkleNode* get_signed_root();
   Proof* generate_proof(int index);
   bool verify_proof(Proof* proof, string data, MerkleNode* root);
+  void batch_update(vector<Transaction> trans);
+  vector<string> find_conflicts(vector<Transaction> trans);
+  void update(vector<Transaction> trans);
 };
 
 MerkleTree::MerkleTree() {
@@ -187,7 +206,7 @@ MerkleTree::MerkleTree() {
 }
 
 bool MerkleTree::insert_leaf(int index, string data) {
-  int last = pow(2, 2) - 1;
+  int last = pow(2, 3) - 1; // Change on scaling
   int first = 0;
   int middle = 0;
   int depth = 0; // Depth needs to be check to make sure it's right level
@@ -336,6 +355,55 @@ bool MerkleTree::verify_proof(Proof* proof, string data, MerkleNode* root) {
   return (ss.str().compare(root->hash) == 0);
 }
 
+vector<string> MerkleTree::find_conflicts(vector<Transaction> trans) {
+  int depth = 3;
+  vector<string> encoded;
+  vector<string> conflicts;
+  stringstream ss;
+
+  for (int i = 0; i < trans.size(); i++) {
+    string encoding = findEncoding(trans.at(i).index, depth);
+    cout << encoding << " ";
+    encoded.push_back(encoding);
+  }
+  cout << endl;
+
+  for (int i = 0; i < encoded.size() - 1; i++) {
+    for (int j = i + 1; j < encoded.size(); j++){
+
+      for (int z = 0; z < depth; z++){
+        if (encoded.at(i).substr(z, 1).compare(encoded.at(j).substr(z, 1)) == 0)
+          ss << encoded.at(i).substr(z, 1);
+        else
+          break;
+      }
+
+      string potentialConflict = ss.str();
+      if (potentialConflict.empty()) {
+        potentialConflict = "-1";
+      }
+      if (!(find(conflicts.begin(), conflicts.end(), potentialConflict) != conflicts.end())) {
+        conflicts.push_back(potentialConflict);
+      }
+      ss.str("");
+    }
+  }
+
+  return conflicts;
+}
+
+void MerkleTree::batch_update(vector<Transaction> trans) {
+  this->conflicts = find_conflicts(trans);
+  for (int i = 0; i < trans.size(); i++)
+    update(trans);
+
+}
+
+void MerkleTree::update(vector<Transaction> trans) {
+
+}
+
+
 int main() {
 
   // Create list of nodes with precreated hashes through hash<T>
@@ -378,11 +446,27 @@ int main() {
   tester.push_back(tempC);
 
 
+
   MerkleNode* root = populate(result);
 
   cout << "D: Before MerkleTree" << endl;
   MerkleTree tree;
   tree.insert_leaf(0, "123");
+
+  vector<Transaction> trans;
+  Transaction tA("I", 0);
+  Transaction tB("hate", 3);
+  Transaction tC("this", 7);
+
+  trans.push_back(tA);
+  trans.push_back(tB);
+  trans.push_back(tC);
+
+  vector<string> returned;
+  returned = tree.find_conflicts(trans);
+  for (int i = 0; i < returned.size(); i++)
+    cout << "Conflict (" << i << "): " << returned.at(i) << endl;
+
 
   MerkleNode* treeNode = tree.get_signed_root();
   while(treeNode->left->left){
