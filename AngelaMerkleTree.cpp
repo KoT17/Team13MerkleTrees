@@ -11,176 +11,15 @@
 #include <mutex>
 #include <thread>
 #include <ctime>
+#include <chrono>
+
+#include "Nodes.h"
 
 using namespace std;
+using namespace chrono;
 
-class LeafNode {
-public:
-  string val;
-  string hash;
-
-  LeafNode(string _val, string _hash);
-};
-
-
-LeafNode::LeafNode(string _val, string _hash) {
-  val = _val;
-  hash = _hash;
-}
-
-class Transaction {
-public:
-  string val;
-  int index;
-
-  Transaction(string _val, int _index);
-};
-
-
-Transaction::Transaction(string _val, int _index) {
-  val = _val;
-  index = _index;
-}
-
-class MerkleNode {
-public:
-  string hash;
-  string encoding; // Needed>
-  LeafNode* leaf;
-  MerkleNode* left;
-  MerkleNode* right;
-  mutex mtx;
-  int visited;
-
-  MerkleNode(string _hash, string _encoding, LeafNode* _leaf);
-  MerkleNode(string _hash, LeafNode* _leaf);
-  MerkleNode(string hash);
-  MerkleNode();
-};
-
-MerkleNode::MerkleNode(string _hash, string _encoding, LeafNode* _leaf) {
-  hash = _hash;
-  leaf = _leaf;
-  encoding = _encoding;
-  visited = 0;
-  left = NULL;
-  right = NULL;
-}
-
-MerkleNode::MerkleNode(string _hash, LeafNode* _leaf) {
-  hash = _hash;
-  leaf = _leaf;
-  encoding = "-1";
-  visited = 0;
-  left = NULL;
-  right = NULL;
-}
-
-MerkleNode::MerkleNode(string _hash) {
-  hash = _hash;
-  leaf = NULL;
-  encoding = "-1";
-  visited = 0;
-  left = NULL;
-  right = NULL;
-}
-
-MerkleNode::MerkleNode() {
-  hash = -1;
-  leaf = NULL;
-  encoding = "-1";
-  left = NULL;
-  right = NULL;
-}
-
-class Proof {
-public:
-  string val;
-  string hash;
-  vector<MerkleNode*> siblingHashes;
-
-  Proof(string _val, string _hash, vector<MerkleNode*> _siblingHashes);
-};
-
-Proof::Proof(string _val, string _hash, vector<MerkleNode*> _siblingHashes) {
-  val = _val;
-  hash = _hash;
-  siblingHashes = _siblingHashes;
-}
-
-string findEncoding(int index, int depth) {
-  if (depth == 0)
-    return "-1";
-
-  vector<int> encode(depth);
-
-  for (int i = 0; index > 0; i++) {
-    encode.at(i) = index % 2;
-    index = index / 2;
-  }
-
-  stringstream ss;
-  for (int i = encode.size() - 1; i > -1; i--)
-    ss << encode.at(i);
-  return ss.str();
-}
-
-// Helper function for populate()
-MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<string> hash, int depth) {
-  vector<MerkleNode*> upperLevel;
-  if(hashedNodes.size() == 1){
-    hashedNodes.at(0)->encoding = "-1";
-    return hashedNodes.at(0);
-  }
-
-  for (int i = 0; i < hashedNodes.size() - 1; i = i + 2) {
-
-    stringstream ss;
-    ss << (hashedNodes.at(i))->hash << (hashedNodes.at(i+1))->hash;
-    stringstream output(ss.str());
-
-    size_t temp = hash(ss.str());
-    ss.str("");
-    ss << temp;
-    MerkleNode* node = new MerkleNode(ss.str());
-
-    node->left = hashedNodes.at(i);
-    node->right = hashedNodes.at(i+1);
-    node->encoding = findEncoding(i / 2, depth);
-
-    upperLevel.push_back(node);
-  }
-
-  // Is this needed now?
-  if(hashedNodes.size() % 2 == 1) {
-    stringstream ss;
-    size_t temp = hash(hashedNodes.at(hashedNodes.size()-1)->hash);
-    ss << temp;
-    MerkleNode* node = new MerkleNode(ss.str());
-
-    node->left = hashedNodes.at(hashedNodes.size()-1);
-    node->encoding = findEncoding((hashedNodes.size() - 1) / 2, depth);
-    upperLevel.push_back(node);
-  }
-
-  return recursivePopulate(upperLevel, hash, depth - 1);
-}
-
-// Returns root of merkle tree
-MerkleNode* populate(vector<LeafNode> leaves) {
-  vector<MerkleNode*> base;
-  hash<string> hash;
-  int depth = 23; // Change for testing/scaling
-
-  for (int i = 0; i < leaves.size(); i++) {
-    MerkleNode* node = new MerkleNode(leaves.at(i).hash, findEncoding(i, depth), &leaves.at(i));
-
-    base.push_back(node);
-  }
-
-  return recursivePopulate(base, hash, depth - 1); // Depth of tree
-}
-
+MerkleNode* populate(vector<LeafNode> leaves);
+string findEncoding(int index, int depth);
 
 class MerkleTree {
 public:
@@ -205,8 +44,8 @@ MerkleTree::MerkleTree() {
   convert << hash("");
   string hashedValue = convert.str();
 
-  for (int i = 0; i < pow(2, 23); i++) {
-    LeafNode temp("", hashedValue); // Whatever # of nodes here
+  for (int i = 0; i < pow(2, 20); i++) {
+    LeafNode temp("", hashedValue);
     init.push_back(temp);
   }
 
@@ -214,10 +53,10 @@ MerkleTree::MerkleTree() {
 }
 
 bool MerkleTree::insert_leaf(int index, string data) {
-  int last = pow(2, 23) - 1; // Change on scaling
+  int last = pow(2, 20) - 1;
   int first = 0;
   int middle = 0;
-  int depth = 0; // Depth needs to be check to make sure it's right level
+  int depth = 0;
 
   MerkleNode* temp = root.load();
   hash<string> hash;
@@ -243,7 +82,7 @@ bool MerkleTree::insert_leaf(int index, string data) {
 
       depth++;
     } else {
-      if(depth != 23) { // NEED to change when scaling up
+      if(depth != 20) {
         parents.push(temp);
         siblings.push(temp->right);
         temp = temp->left;
@@ -284,8 +123,6 @@ bool MerkleTree::insert_leaf(int index, string data) {
     }
   }
 
-  // Above hash values must be updated
-
   return 0;
 }
 
@@ -294,16 +131,14 @@ MerkleNode* MerkleTree::get_signed_root() {
 }
 
 Proof* MerkleTree::generate_proof(int index) {
-  int last = pow(2, 23) - 1;
+  int last = pow(2, 20) - 1;
   int first = 0;
   int middle = 0;
-  int depth = 0; // Depth needs to be check to make sure it's right level
+  int depth = 0;
 
   MerkleNode* temp = root.load();
   hash<string> hash;
   stack<MerkleNode*> siblings;
-
-  cout << "Before while" << endl;
 
   while (first <= last) {
     middle = (first + last) / 2;
@@ -318,7 +153,7 @@ Proof* MerkleTree::generate_proof(int index) {
       temp = temp->left;
       depth++;
     } else {
-      if(depth != 23) { // NEED to change when scaling up
+      if(depth != 20) {
         siblings.push(temp->right);
         temp = temp->left;
 
@@ -327,8 +162,6 @@ Proof* MerkleTree::generate_proof(int index) {
           temp = temp->right;
         }
       }
-
-      cout << "After BS" << endl;
 
       vector<MerkleNode*> proofHashes;
       while (!siblings.empty()) {
@@ -340,12 +173,9 @@ Proof* MerkleTree::generate_proof(int index) {
       stringstream ss;
       ss <<  hash("");
 
-      cout << "About to Return" << endl;
-      cout << temp->hash << endl;
       if (temp->hash.compare(ss.str()) == 0)
         return NULL;
       Proof* result = new Proof(temp->leaf->val, temp->hash, proofHashes);
-      cout << "returned" << endl;
       return result;
     }
   }
@@ -354,15 +184,13 @@ Proof* MerkleTree::generate_proof(int index) {
 
 bool MerkleTree::verify_proof(Proof* proof, string data, MerkleNode* root) {
   if (proof == NULL)
-    return 0;
+    return false;
 
   hash<string> hash;
   size_t hashedData = hash(data);
   int size;
   size_t newHash;
   stringstream ss;
-
-  cout << "Proof is: " << proof->val << endl;
 
   if (proof) {
     size = proof->siblingHashes.size();
@@ -385,18 +213,15 @@ bool MerkleTree::verify_proof(Proof* proof, string data, MerkleNode* root) {
 }
 
 vector<string> MerkleTree::find_conflicts(vector<Transaction> trans) {
-  int depth = 23;
+  int depth = 20;
   vector<string> encoded;
   vector<string> conflicts;
   stringstream ss;
 
-
   for (int i = 0; i < trans.size(); i++) {
     string encoding = findEncoding(trans.at(i).index, depth);
-    cout << encoding << " ";
     encoded.push_back(encoding);
   }
-  cout << endl;
 
 
   for (int i = 0; i < encoded.size() - 1; i++) {
@@ -429,10 +254,10 @@ void MerkleTree::batch_update(vector<Transaction> trans, int ind) {
 }
 
 void MerkleTree::update(Transaction trans) {
-  int last = pow(2, 23) - 1;
+  int last = pow(2, 20) - 1;
   int first = 0;
   int middle = 0;
-  int depth = 0; // Depth needs to be check to make sure it's right level
+  int depth = 0;
   bool isInConflict = false;
 
   MerkleNode* temp = root.load();
@@ -451,7 +276,7 @@ void MerkleTree::update(Transaction trans) {
       temp = temp->left;
       depth++;
     } else {
-      if(depth != 23) { // NEED to change when scaling up
+      if(depth != 20) {
         prev = temp;
         temp = temp->left;
 
@@ -473,42 +298,95 @@ void MerkleTree::update(Transaction trans) {
     prev->mtx.lock();
     if (prev->visited == 0) {
       prev->visited = 1;
-      //remember to kill the thread rip
     }
     else {
       insert_leaf(trans.index, trans.val);
     }
     prev->mtx.unlock();
   }
-  else { //parent is not a conflict then process that transaction
+  else {
     insert_leaf(trans.index, trans.val);
   }
 
   return;
 }
 
+string findEncoding(int index, int depth) {
+  if (depth == 0)
+    return "-1";
+
+  vector<int> encode(depth);
+
+  for (int i = 0; index > 0; i++) {
+    encode.at(i) = index % 2;
+    index = index / 2;
+  }
+
+  stringstream ss;
+  for (int i = encode.size() - 1; i > -1; i--)
+    ss << encode.at(i);
+  return ss.str();
+}
+
+MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<string> hash, int depth) {
+  vector<MerkleNode*> upperLevel;
+  if(hashedNodes.size() == 1){
+    hashedNodes.at(0)->encoding = "-1";
+    return hashedNodes.at(0);
+  }
+
+  for (int i = 0; i < hashedNodes.size() - 1; i = i + 2) {
+
+    stringstream ss;
+    ss << (hashedNodes.at(i))->hash << (hashedNodes.at(i+1))->hash;
+    stringstream output(ss.str());
+
+    size_t temp = hash(ss.str());
+    ss.str("");
+    ss << temp;
+    MerkleNode* node = new MerkleNode(ss.str());
+
+    node->left = hashedNodes.at(i);
+    node->right = hashedNodes.at(i+1);
+    node->encoding = findEncoding(i / 2, depth);
+
+    upperLevel.push_back(node);
+  }
+
+  return recursivePopulate(upperLevel, hash, depth - 1);
+}
+
+// Returns root of merkle tree
+MerkleNode* populate(vector<LeafNode> leaves) {
+  vector<MerkleNode*> base;
+  hash<string> hash;
+  int depth = 20;
+
+  for (int i = 0; i < leaves.size(); i++) {
+    MerkleNode* node = new MerkleNode(leaves.at(i).hash, findEncoding(i, depth), &leaves.at(i));
+
+    base.push_back(node);
+  }
+
+  return recursivePopulate(base, hash, depth - 1);
+}
+
 void run(int randNum[4], int id, MerkleTree *tree, vector<Transaction> trans, int st) {
   Proof* proof;
   bool res = false;
 
-  cout << "HI IM IN RUN" << endl;
   for (int i = 0; i < 4; i++) {
-    if (randNum[i] == 0) {
-      cout << "Thread: " << id << " trying to insert leaf" << endl;
+    if (randNum[i] == 0 || randNum[i] == 4) {
       tree->insert_leaf(trans.at(i).index, trans.at(i).val);
     }
-    else if (randNum[i] == 1) {
-      cout << "Thread: " << id << " trying to get signed root" << endl;
+    else if (randNum[i] == 1 || randNum[i] == 5 || randNum[i] == 6) {
       tree->get_signed_root();
     }
-    else if (randNum[i] == 2) {
-      cout << "Thread: " << id << " trying to generate proof" << endl;
+    else if (randNum[i] == 2 || randNum[i] == 7 || randNum[i] == 8 || randNum[i] == 9) {
       proof = tree->generate_proof(trans.at(i).index);
-      cout << "Thread: " << id << " trying to verify proof" << endl;
       res = tree->verify_proof(proof, trans.at(i).val, tree->get_signed_root());
     }
     else if (randNum[i] == 3) {
-      cout << "Thread: " << id << " trying to batch update" << endl;
       tree->batch_update(trans, st);
     }
   }
@@ -517,64 +395,20 @@ void run(int randNum[4], int id, MerkleTree *tree, vector<Transaction> trans, in
 int main() {
   vector<thread> threads;
   int randNum[4];
+  vector<Transaction> trans;
+
   srand (time(NULL));
   int st = 0;
 
   for (int i = 0; i < 4; i++) {
-    randNum[i] = rand() % 4;
+    randNum[i] = rand() % 10;
   }
 
-  // Create list of nodes with precreated hashes through hash<T>
-  // populate Merkle Tree with list
-  hash<string> test;
-
-  string A = "A";
-  string B = "B";
-  string C = "C";
-
-  stringstream convert;
-  convert << test(A);
-  string hashA = convert.str();
-
-  convert.str("");
-  convert << test(B);
-  string hashB = convert.str();
-
-  convert.str("");
-  convert << test(C);
-  string hashC = convert.str();
-
-  LeafNode tempA("1", hashA);
-  LeafNode tempB("2", hashB);
-  LeafNode tempC("3", hashC);
-
-  vector<LeafNode> result;
-  result.push_back(tempA);
-  result.push_back(tempB);
-  result.push_back(tempA);
-  result.push_back(tempB);
-  result.push_back(tempA);
-  result.push_back(tempB);
-  result.push_back(tempA);
-  result.push_back(tempB);
-
-  vector<LeafNode> tester;
-  tester.push_back(tempA);
-  tester.push_back(tempB);
-  tester.push_back(tempC);
-
-  MerkleNode* root = populate(result);
-
-  cout << "D: Before MerkleTree" << endl;
-  MerkleTree tree;
-  tree.insert_leaf(0, "123");
-
-  vector<Transaction> trans;
-  Transaction tA("I", 0);
-  Transaction tB("hate", 3);
-  Transaction tC("this", 7);
-  Transaction tD("ish", 5);
-  Transaction tE("hi", 2);
+  Transaction tA("A", 0);
+  Transaction tB("B", 3);
+  Transaction tC("C", 7);
+  Transaction tD("D", 5);
+  Transaction tE("E", 2);
 
   trans.push_back(tA);
   trans.push_back(tB);
@@ -582,13 +416,10 @@ int main() {
   trans.push_back(tD);
   trans.push_back(tE);
 
-  vector<string> returned;
-  returned = tree.find_conflicts(trans);
-  for (int i = 0; i < returned.size(); i++)
-    cout << "Conflict (" << i << "): " << returned.at(i) << endl;
+  MerkleTree tree;
 
-//run the threads here
-  for (int tnum = 0; tnum < 32; tnum++)
+  auto start = high_resolution_clock::now();
+  for (int tnum = 0; tnum < 1; tnum++)
   {
     threads.push_back(thread(run, randNum, tnum, &tree, trans, st));
     st++;
@@ -596,23 +427,6 @@ int main() {
 
   for_each(threads.begin(), threads.end(), mem_fn(&thread::join));
 
-  /*
-  MerkleNode* treeNode = tree.get_signed_root();
-  while(treeNode->left->left){
-    treeNode = treeNode->left;
-  }
-
-  cout << "Encoding the first two siblings: " << root->encoding << " " << root->left->encoding<< " " << root->right->encoding << " " << root->right->right->left->encoding << endl;
-
-  cout << "First Hash: " << treeNode->left->hash << " Second Hash: " << treeNode->right->hash << endl;
-  cout << "Head hash: " << treeNode->hash << endl;
-  cout << "MerkleRoot: " << tree.get_signed_root()->hash << endl;
-  tree.insert_leaf(1, "777");
-  cout << "First Hash: " << treeNode->left->hash << " Second Hash: " << treeNode->right->hash << endl;
-  cout << "Head hash: " << treeNode->hash << endl;
-  cout << "MerkleRoot: " << tree.get_signed_root()->hash << endl;
-
-  Proof* pro = tree.generate_proof(1);
-  cout << "Proof values, val: " << pro->val << " Hash: " << pro->hash << endl;
-  cout << "Proof Compare: " << tree.verify_proof(pro, "777", tree.get_signed_root()) << endl;*/
+  auto end = high_resolution_clock::now();
+  cout << "Time: " << duration_cast<nanoseconds>(end - start).count() << "ns" << endl;
 }
