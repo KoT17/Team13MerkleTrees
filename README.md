@@ -1,5 +1,8 @@
 # Team13MerkleTrees
 
+#### The paper we are focusing on: 
+* https://people.eecs.berkeley.edu/~kubitron/courses/cs262a-F18/projects/reports/project1_report_ver3.pdf
+
 ### Assignment 1
 
 #### We will be: 
@@ -23,9 +26,6 @@ key methods and properties, b) discuss the technical details of your implementat
 including the use of MRLOCK and the key algorithms of your implementation, and c)
 include a list of references including a citation to the MRLOCK algorithm, your main topic
 paper, and other relevant approaches. 
-
-#### The paper we are focusing on: 
-* https://people.eecs.berkeley.edu/~kubitron/courses/cs262a-F18/projects/reports/project1_report_ver3.pdf
 
 #### What we read on: 
 * https://www.geeksforgeeks.org/introduction-to-merkle-tree/
