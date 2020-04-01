@@ -8,6 +8,9 @@
 #include <cmath>
 #include <stack>
 #include <algorithm>
+#include <mutex> 
+#include <thread> 
+#include <ctime> 
 
 using namespace std;
 
@@ -46,6 +49,8 @@ public:
   LeafNode* leaf;
   MerkleNode* left;
   MerkleNode* right;
+  mutex mtx; 
+  int visited; 
 
   MerkleNode(string _hash, string _encoding, LeafNode* _leaf);
   MerkleNode(string _hash, LeafNode* _leaf);
@@ -57,6 +62,7 @@ MerkleNode::MerkleNode(string _hash, string _encoding, LeafNode* _leaf) {
   hash = _hash;
   leaf = _leaf;
   encoding = _encoding;
+  visited = 0; 
   left = NULL;
   right = NULL;
 }
@@ -65,6 +71,7 @@ MerkleNode::MerkleNode(string _hash, LeafNode* _leaf) {
   hash = _hash;
   leaf = _leaf;
   encoding = "-1";
+  visited = 0; 
   left = NULL;
   right = NULL;
 }
@@ -73,6 +80,7 @@ MerkleNode::MerkleNode(string _hash) {
   hash = _hash;
   leaf = NULL;
   encoding = "-1";
+  visited = 0; 
   left = NULL;
   right = NULL;
 }
@@ -184,9 +192,9 @@ public:
   MerkleNode* get_signed_root();
   Proof* generate_proof(int index);
   bool verify_proof(Proof* proof, string data, MerkleNode* root);
-  void batch_update(vector<Transaction> trans);
+  void batch_update(vector<Transaction> trans, int ind);
   vector<string> find_conflicts(vector<Transaction> trans);
-  void update(vector<Transaction> trans);
+  void update(Transaction trans);
 };
 
 MerkleTree::MerkleTree() {
@@ -336,23 +344,30 @@ Proof* MerkleTree::generate_proof(int index) {
 bool MerkleTree::verify_proof(Proof* proof, string data, MerkleNode* root) {
   hash<string> hash;
   size_t hashedData = hash(data);
-  int size = proof->siblingHashes.size();
+  int size; 
   size_t newHash;
   stringstream ss;
+  
+  cout << "Proof is: " << proof->val << endl; 
 
-  ss << hashedData << proof->siblingHashes.at(0)->hash;
-  newHash = hash(ss.str());
-  ss.str("");
-
-  for (int i = 1; i < size; i++) {
-    ss << newHash << proof->siblingHashes.at(i)->hash;
+  if (proof) {
+    size = proof->siblingHashes.size();
+    ss << hashedData << proof->siblingHashes.at(0)->hash;
     newHash = hash(ss.str());
     ss.str("");
+
+    for (int i = 1; i < size; i++) {
+      ss << newHash << proof->siblingHashes.at(i)->hash;
+      newHash = hash(ss.str());
+      ss.str("");
+    }
+
+    ss << newHash;
+
+    return (ss.str().compare(root->hash) == 0);
   }
 
-  ss << newHash;
-
-  return (ss.str().compare(root->hash) == 0);
+  return false; 
 }
 
 vector<string> MerkleTree::find_conflicts(vector<Transaction> trans) {
@@ -392,19 +407,106 @@ vector<string> MerkleTree::find_conflicts(vector<Transaction> trans) {
   return conflicts;
 }
 
-void MerkleTree::batch_update(vector<Transaction> trans) {
+void MerkleTree::batch_update(vector<Transaction> trans, int ind) {
   this->conflicts = find_conflicts(trans);
-  for (int i = 0; i < trans.size(); i++)
-    update(trans);
-
+  for (int i = ind; i < trans.size(); i++)
+    update(trans.at(i));
 }
 
-void MerkleTree::update(vector<Transaction> trans) {
+void MerkleTree::update(Transaction trans) {
+  int last = pow(2, 3) - 1;
+  int first = 0;
+  int middle = 0;
+  int depth = 0; // Depth needs to be check to make sure it's right level
+  bool isInConflict = false; 
 
+  MerkleNode* temp = root.load();
+  MerkleNode* prev = temp; 
+
+  while (first <= last) {
+    middle = (first + last) / 2;
+    if (middle < trans.index) {
+      first = middle + 1;
+      prev = temp; 
+      temp = temp->right;
+      depth++;
+    } else if (middle > trans.index) {
+      last = middle - 1;
+      prev = temp; 
+      temp = temp->left;
+      depth++;
+    } else {
+      if(depth != 3) { // NEED to change when scaling up
+        prev = temp; 
+        temp = temp->left;
+
+        while (temp->right) {
+          prev = temp; 
+          temp = temp->right;
+        }
+      }
+    }
+  }
+ 
+  for (int i = 0; i < this->conflicts.size(); i++) {
+    if (prev->encoding.compare(this->conflicts.at(i)) == 0) 
+      isInConflict = true; 
+  }
+
+  if (isInConflict) {
+    prev->mtx.lock();  
+    if (prev->visited == 0) {
+      prev->visited = 1; 
+      //remember to kill the thread rip 
+    }
+    else {
+      insert_leaf(trans.index, trans.val);
+    }
+    prev->mtx.unlock(); 
+  }
+  else { //parent is not a conflict then process that transaction 
+    insert_leaf(trans.index, trans.val);
+  }
+
+  return; 
 }
 
+void run(int randNum[4], int id, MerkleTree *tree, vector<Transaction> trans, int st) {
+  Proof* proof; 
+  bool res = false;  
+
+  cout << "HI IM IN RUN" << endl;
+  for (int i = 0; i < 4; i++) {
+    if (randNum[i] == 0) {
+      cout << "Thread: " << id << " trying to insert leaf" << endl; 
+      tree->insert_leaf(trans.at(i).index, trans.at(i).val);
+    }
+    else if (randNum[i] == 1) {
+      cout << "Thread: " << id << " trying to get signed root" << endl; 
+      tree->get_signed_root(); 
+    }
+    else if (randNum[i] == 2) {
+      cout << "Thread: " << id << " trying to generate proof" << endl; 
+      proof = tree->generate_proof(trans.at(i).index); 
+      cout << "Thread: " << id << " trying to verify proof" << endl; 
+      res = tree->verify_proof(proof, trans.at(i).val, tree->root);
+    }
+    else if (randNum[i] == 3) {
+      cout << "Thread: " << id << " trying to batch update" << endl; 
+      tree->batch_update(trans, st);
+    }
+  }
+}
 
 int main() {
+  vector<thread> threads; 
+  int randNum[4]; 
+  srand (time(NULL));
+  int st = 0; 
+
+  for (int i = 0; i < 4; i++) {
+    randNum[i] = rand() % 4; 
+  }
 
   // Create list of nodes with precreated hashes through hash<T>
   // populate Merkle Tree with list
@@ -445,8 +547,6 @@ int main() {
   tester.push_back(tempB);
   tester.push_back(tempC);
 
-
-
   MerkleNode* root = populate(result);
 
   cout << "D: Before MerkleTree" << endl;
@@ -457,16 +557,28 @@ int main() {
   Transaction tA("I", 0);
   Transaction tB("hate", 3);
   Transaction tC("this", 7);
+  Transaction tD("ish", 5);
+  Transaction tE("hi", 2);
 
   trans.push_back(tA);
   trans.push_back(tB);
   trans.push_back(tC);
+  trans.push_back(tD);
+  trans.push_back(tE); 
 
   vector<string> returned;
   returned = tree.find_conflicts(trans);
   for (int i = 0; i < returned.size(); i++)
     cout << "Conflict (" << i << "): " << returned.at(i) << endl;
 
+//run the threads here
+  for (int tnum = 0; tnum < 2; tnum++)
+  {
+    threads.push_back(thread(run, randNum, tnum, &tree, trans, st));
+    st++; 
+  }
+
+  for_each(threads.begin(), threads.end(), mem_fn(&thread::join));
 
   MerkleNode* treeNode = tree.get_signed_root();
   while(treeNode->left->left){
