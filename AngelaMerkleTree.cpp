@@ -36,6 +36,8 @@ public:
   void update(Transaction trans);
 };
 
+
+// Constructor of Merkle Tree
 MerkleTree::MerkleTree() {
   vector<LeafNode> init;
 
@@ -52,6 +54,8 @@ MerkleTree::MerkleTree() {
   root.store(populate(init));
 }
 
+
+// Insert function to change leaf at index with data
 bool MerkleTree::insert_leaf(int index, string data) {
   int last = pow(2, 20) - 1;
   int first = 0;
@@ -63,6 +67,7 @@ bool MerkleTree::insert_leaf(int index, string data) {
   stack<MerkleNode*> siblings;
   stack<MerkleNode*> parents;
 
+  // Modified BST with stack travsal
   while (first <= last) {
     middle = (first + last) / 2;
     if (middle < index) {
@@ -126,10 +131,12 @@ bool MerkleTree::insert_leaf(int index, string data) {
   return 0;
 }
 
+// Returns Merkle Root of tree
 MerkleNode* MerkleTree::get_signed_root() {
   return root.load();
 }
 
+// Retrieves the proof object from index
 Proof* MerkleTree::generate_proof(int index) {
   int last = pow(2, 20) - 1;
   int first = 0;
@@ -182,6 +189,7 @@ Proof* MerkleTree::generate_proof(int index) {
   return NULL;
 }
 
+// Verifies if proof values are inside of data
 bool MerkleTree::verify_proof(Proof* proof, string data, MerkleNode* root) {
   if (proof == NULL)
     return false;
@@ -263,6 +271,7 @@ void MerkleTree::update(Transaction trans) {
   MerkleNode* temp = root.load();
   MerkleNode* prev = temp;
 
+  // Parent retrieval
   while (first <= last) {
     middle = (first + last) / 2;
     if (middle < trans.index) {
@@ -289,6 +298,7 @@ void MerkleTree::update(Transaction trans) {
     }
   }
 
+  // Concurrent parent conflict resolving
   for (int i = 0; i < this->conflicts.size(); i++) {
     if (prev->encoding.compare(this->conflicts.at(i)) == 0)
       isInConflict = true;
@@ -298,6 +308,7 @@ void MerkleTree::update(Transaction trans) {
     prev->mtx.lock();
     if (prev->visited == 0) {
       prev->visited = 1;
+      return;
     }
     else {
       insert_leaf(trans.index, trans.val);
@@ -311,6 +322,7 @@ void MerkleTree::update(Transaction trans) {
   return;
 }
 
+// Returns encoding of Node based on index and depth of Node
 string findEncoding(int index, int depth) {
   if (depth == 0)
     return "-1";
@@ -328,6 +340,7 @@ string findEncoding(int index, int depth) {
   return ss.str();
 }
 
+// Used for base sparse tree creation
 MerkleNode* recursivePopulate(vector<MerkleNode*> hashedNodes, hash<string> hash, int depth) {
   vector<MerkleNode*> upperLevel;
   if(hashedNodes.size() == 1){
@@ -371,6 +384,7 @@ MerkleNode* populate(vector<LeafNode> leaves) {
   return recursivePopulate(base, hash, depth - 1);
 }
 
+// Thread function
 void run(int randNum[4], int id, MerkleTree *tree, vector<Transaction> trans, int st) {
   Proof* proof;
   bool res = false;
