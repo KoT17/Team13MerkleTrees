@@ -1,5 +1,8 @@
 # Team13MerkleTrees
 
+#### The paper we are focusing on: 
+* https://people.eecs.berkeley.edu/~kubitron/courses/cs262a-F18/projects/reports/project1_report_ver3.pdf
+
 ### Assignment 1
 
 #### We will be: 
@@ -24,9 +27,6 @@ including the use of MRLOCK and the key algorithms of your implementation, and c
 include a list of references including a citation to the MRLOCK algorithm, your main topic
 paper, and other relevant approaches. 
 
-#### The paper we are focusing on: 
-* https://people.eecs.berkeley.edu/~kubitron/courses/cs262a-F18/projects/reports/project1_report_ver3.pdf
-
 #### What we read on: 
 * https://www.geeksforgeeks.org/introduction-to-merkle-tree/
 * https://hackernoon.com/merkle-trees-181cb4bc30b4
@@ -41,4 +41,23 @@ paper, and other relevant approaches.
 * ./a.out 
 
 #### Our Published paper on Research Gate 
-https://www.researchgate.net/publication/340106020_Exploration_of_Concurrent_Merkle_Trees_using_MRLock
+* https://www.researchgate.net/publication/340106020_Exploration_of_Concurrent_Merkle_Trees_using_MRLock
+
+### Assignment 2
+
+#### We will be: 
+
+1. The goal is to implement our own version of the algorithms described in the main paper, and to re-implement the data structure with its key multi-threading properties in terms of progress, correctness, efficiency, and thread-safety. 
+2. Run performance tests and compare the execution time of this version of the data structure with the MRLOCK-based version from Project Assignment 1. 
+
+#### What we read on: 
+* https://medium.com/@kelvinfichter/whats-a-sparse-merkle-tree-acda70aeb837
+
+#### How to compile: 
+##### AngelaMerkleTree.cpp
+###### On Windows 
+* g++ AngelaMerkleTree.cpp -pthread
+* ./a.out 
+###### On Mac 
+* clang++ -std=c++11 AngelaMerkleTree.cpp 
+* ./a.out
